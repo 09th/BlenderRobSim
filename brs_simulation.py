@@ -5,8 +5,9 @@ from math import degrees, radians
 
 class RobotSimulation():
 
-    def __init__(self, robot_kinemtics):
+    def __init__(self, robot_kinemtics, external_kinematics):
         self.robot = robot_kinemtics
+        self.external = external_kinematics
         self.sequence = []
         self.sequence_times = [0]
         self._tcp_mat = mathutils.Matrix()
@@ -26,6 +27,8 @@ class RobotSimulation():
         ad = {}
         for an in self.robot.parameters['axis_names']:
             ad[an] = (to_angles[an] - from_angles[an])*delta_time
+        for an in self.robot.parameters['exax_names']:
+            ad[an] = (to_angles[an] - from_angles[an])*delta_time
         return ad
 
     def calc_ptp_time(self, from_angles, to_angles, spd):
@@ -34,6 +37,8 @@ class RobotSimulation():
         ptp_time = 0
         for an in self.robot.parameters['axis_names']:
             ptp_time = max(ptp_time, abs(da[an])/self.robot.parameters['axis_spd'][an]/spd)
+        for an in self.robot.parameters['exax_names']:
+            ptp_time = max(ptp_time, abs(da[an])/self.robot.parameters['exax_spd'][an]/spd)
         return ptp_time
         
     def _calc_sequence_times(self):
@@ -68,9 +73,11 @@ class RobotSimulation():
             time_factor = 1.0
             if (end_time - start_time) > 0:
                 time_factor = (cur_time - start_time) / (end_time - start_time)
+            da = self.get_delta_angles(ax1, ax2, time_factor)
+            for an in self.robot.parameters['exax_names']:
+                self.external.set_axis_angle(an, ax1[an] + da[an])
             if pname2.startswith('PTP'):
                 self.robot.ik_active = False
-                da = self.get_delta_angles(ax1, ax2, time_factor)
                 for an in self.robot.parameters['axis_names']:
                     self.robot.set_axis_angle(an, ax1[an] + da[an])
                 #self.robot.update_tool_pos()
@@ -83,6 +90,16 @@ class RobotSimulation():
     def interactive_update(self, scene):
         # интерактивное обновление инверсной кинематики при перемещении TCP или базы
         self.robot._update_ptrs()
+        # Check external kinematics influence
+        if self.external:
+            self.external._update_ptrs()
+            changes = self.external.get_flange_changes()
+            for an, matx in changes.items():
+                if self.external.flange_state[an] == 1: # state 1 - TCP follows the flange
+                    mat_from, mat_to = matx
+                    tcp_loc = mat_from.inverted() @ self.robot.tcp.matrix_world
+                    self.robot.tcp.matrix_world = mat_to @ tcp_loc
+        # Update robot kinematics            
         if self._tcp_mat != self.robot.tcp.matrix_world or self._root_mat != self.robot.rob_root.matrix_world:
             self._tcp_mat = self.robot.tcp.matrix_world.copy()
             self._root_mat = self.robot.rob_root.matrix_world.copy()
@@ -93,7 +110,8 @@ class RobotSimulation():
         # Расчёт движения на основе списка переданных точек и генерация self.sequence
         tmp_mat = self.robot.tcp.matrix_world.copy()
         tmp_conf = self.robot.axis_config
-        for pname, spd, config in program:
+        for record in program:
+            pname, spd, config, exkin, tool = record
             p = bpy.context.scene.objects[pname]
             self.robot.tcp.matrix_world = p.matrix_world
             if config and pname.startswith('PTP'):
@@ -101,6 +119,7 @@ class RobotSimulation():
             bpy.context.view_layer.update()
             self.robot.update_ik()
             aa = self.get_current_axis_angles()
+            aa.update(exkin)
             delta_time = 0
             # если есть предыдущие точки, то считаем время перемещения от предыдущей в текущую
             if len(self.sequence) > 0:

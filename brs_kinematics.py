@@ -60,7 +60,7 @@ class RobotFK():
             mat = axis_parent.matrix_world.inverted_safe() @ mat #self.axis[axis_name].matrix_world
         else:
             mat = self.rob_root.matrix_world.inverted() @ mat
-        idx = self.parameters['axis_angle_idx'][axis_name]
+        idx = self.parameters['axis_dir_idx'][axis_name]
         if form == 'degrees':
             return degrees(mat.to_euler()[idx]) * self.parameters['axis_rot_direction'][axis_name]
         return mat.to_euler()[idx] * self.parameters['axis_rot_direction'][axis_name]
@@ -69,7 +69,7 @@ class RobotFK():
         # Преобразование угла оси робота в матрицу соответствующего этой оси объекта
         self._save_axis_local_mat()
         eul = mathutils.Euler((0.0, 0.0, 0.0), 'XYZ')
-        idx = self.parameters['axis_angle_idx'][axis_name]
+        idx = self.parameters['axis_dir_idx'][axis_name]
         if form == 'degrees':
             eul[idx] = radians(value) * self.parameters['axis_rot_direction'][axis_name]
         else:
@@ -114,7 +114,7 @@ class RobotFK():
 
 
 
-class RobotKinematics(RobotFK):
+class RobotKinematics6Ax(RobotFK):
     # Инверсная кинематика
     
     def __init__(self, *args):
@@ -153,7 +153,7 @@ class RobotKinematics(RobotFK):
         pa2 = self.axis['A2']
         pa1 = self.axis['A1']
         a_disp = self.parameters['axis_disp']
-        a_rot = self.parameters['axis_rot'] # TODO пока не используется
+        #a_rot = self.parameters['axis_rot'] # TODO пока не используется
         err = False
         
         # положение А6 жёстко привязано к инструменту, можем получить сразу из TCP
@@ -243,7 +243,77 @@ class RobotKinematics(RobotFK):
         pa4.matrix_world = mathutils.Matrix.Translation(pa4.matrix_world.translation) @ m4.to_4x4()
         pa5.matrix_world = mathutils.Matrix.Translation(pa5.matrix_world.translation) @ m5.to_4x4()
 
+
+class ExternalFK():
+    
+    def __init__(self, parameters):
+        self.parameters = parameters # параметры
+        self.objects = {}               # ссылки на объекты кинематики
+        self._update_ptrs()
+        self.flange_state = {fn:0 for fn in self.parameters['ek_flanges'].keys()}
+        self._last_flange_mat = {}
+        self._update_last_flange_mat()
+    
+    
+    def _update_ptrs(self):
+        for o, on in self.parameters['exkin_objects'].items():
+            self.objects[o] = bpy.context.scene.objects[on]
+    
+    def _update_last_flange_mat(self):
+        for an, fn in self.parameters['ek_flanges'].items():
+            self._last_flange_mat[an] = self.objects[fn].matrix_world.copy()
+    
+    def get_flange_state(self, ax_name):
+        return self.flange_state[ax_name]
+
+    
+    def set_flange_state(self, ax_name, val):
+        for fn, fv in self.flange_state.items():
+            if fv == val:
+                self.flange_state[fn] = 0
+        self.flange_state[ax_name] = val
+        self._update_last_flange_mat()
+    
+    def get_axis_angle(self, axis_name, form='degrees'):
+        # 
+        mat = self.objects[axis_name].matrix_world
+        #axis_parent = self.get_axis_parent(axis_name)
+        #if axis_parent:
+        #    mat = axis_parent.matrix_world.inverted_safe() @ mat #self.axis[axis_name].matrix_world
+        #else:
+        #    mat = self.rob_root.matrix_world.inverted() @ mat
+        idx = self.parameters['exax_dir_idx'][axis_name]
+        if form == 'degrees':
+            return degrees(mat.to_euler()[idx]) * self.parameters['exax_rot_direction'][axis_name]
+        return mat.to_euler()[idx] * self.parameters['exax_rot_direction'][axis_name]
+    
+    def set_axis_angle(self, axis_name, value, form='degrees'):
+        # 
+        #self._save_axis_local_mat()
+        eul = mathutils.Euler((0.0, 0.0, 0.0), 'XYZ')
+        idx = self.parameters['exax_dir_idx'][axis_name]
+        if form == 'degrees':
+            eul[idx] = radians(value) * self.parameters['exax_rot_direction'][axis_name]
+        else:
+            eul[idx] = value * self.parameters['exax_rot_direction'][axis_name]
+        mat = mathutils.Matrix.LocRotScale(self.objects[axis_name].matrix_world.translation, eul, (1,1,1))
+        #axis_parent = self.get_axis_parent(axis_name)
+        #if axis_parent:
+        #    mat = axis_parent.matrix_world @ mat
+        #else:
+        #    mat = self.rob_root.matrix_world @ mat
+        self.objects[axis_name].matrix_world = mat
         
+    def get_flange_changes(self, flush = True):
+        changes = {}
+        for an, fn in self.parameters['ek_flanges'].items():
+            fl = self.objects[fn]
+            if fl.matrix_world != self._last_flange_mat[an]:
+                changes[an] = [self._last_flange_mat[an], fl.matrix_world]
+        if flush:
+            self._update_last_flange_mat()
+        return changes
+
 
 if __name__ == '__main__':
     #print('!!!')

@@ -2,6 +2,7 @@ import bpy, mathutils
 from math import degrees, radians
 
 selected_robot = None
+selected_exkin = None
                                         
 class SimpleRobotPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_simple_robot_panel"
@@ -33,6 +34,14 @@ class SimpleRobotPanel(bpy.types.Panel):
     bpy.types.Scene.axis_config = bpy.props.BoolVectorProperty(name = 'Config', size = 3,
                                         get = lambda s: selected_robot.get_axis_config_bool(),
                                         set = lambda s, v: selected_robot.set_axis_config_bool(v))
+                                        
+    bpy.types.Scene.E1_val = bpy.props.FloatProperty(name = 'E1', default = 0, 
+                                        get = lambda s: selected_exkin.get_axis_angle('E1'),
+                                        set = lambda s, v: selected_exkin.set_axis_angle('E1', v))
+    bpy.types.Scene.E1_tcp_follow = bpy.props.BoolProperty(name = 'TCP', default = False,
+                                        get = lambda s: selected_exkin.get_flange_state('E1'),
+                                        set = lambda s, v: selected_exkin.set_flange_state('E1', v))
+                                        
     def draw(self, context):
         
         if not selected_robot:
@@ -47,6 +56,15 @@ class SimpleRobotPanel(bpy.types.Panel):
         for ax_n in axis_names:
             row = self.layout.row()
             row.prop(context.scene, ax_n+'_val')
+        
+        if selected_exkin:
+            exax_names = selected_exkin.parameters['exax_names']
+            flanges = selected_exkin.parameters['ek_flanges']
+            for eax_n in exax_names:
+                row = self.layout.row()
+                row.prop(context.scene, eax_n+'_val')
+                if eax_n in flanges.keys():
+                    row.prop(context.scene, eax_n+'_tcp_follow')
         
         #debug_axis_info = False
         #if debug_axis_info:
