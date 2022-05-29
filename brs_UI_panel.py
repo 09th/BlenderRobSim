@@ -41,6 +41,12 @@ class SimpleRobotPanel(bpy.types.Panel):
     bpy.types.Scene.E1_tcp_follow = bpy.props.BoolProperty(name = 'TCP', default = False,
                                         get = lambda s: selected_exkin.get_flange_state('E1'),
                                         set = lambda s, v: selected_exkin.set_flange_state('E1', v))
+    bpy.types.Scene.E2_val = bpy.props.FloatProperty(name = 'E2', default = 0, 
+                                        get = lambda s: selected_exkin.get_axis_angle('E2'),
+                                        set = lambda s, v: selected_exkin.set_axis_angle('E2', v))
+    bpy.types.Scene.E2_tcp_follow = bpy.props.BoolProperty(name = 'TCP', default = False,
+                                        get = lambda s: selected_exkin.get_flange_state('E2'),
+                                        set = lambda s, v: selected_exkin.set_flange_state('E2', v))
                                         
     def draw(self, context):
         

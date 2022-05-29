@@ -89,13 +89,14 @@ def save_KRL(sequence, fname):
         pn = 'P{0}'.format(p_num)
         pdat = 'PDAT{0}'.format(p_num)
         ldat = 'CPDAT{0}'.format(p_num)
-        pname, mat, spd, axis, t = waypoint
+        pname, p, spd, axis, t, stored_mat = waypoint
         if pname.startswith('PTP'):
             pp = [pn, spd, pdat, tool, base]
             ax_val = [axis[an] for an in mod_rp.parameters['axis_names']]
             src += ptp_tmpl_src.format(*pp)
             dat += ptp_tmpl_dat.format(*(pp + ax_val))
         elif pname.startswith('LIN'):
+            mat = p.matrix_world
             lp = [pn, spd, ldat, tool, base]
             tr = mat.translation
             eul = mat.to_euler()

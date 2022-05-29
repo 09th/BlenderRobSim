@@ -66,8 +66,8 @@ class RobotSimulation():
         segment = self.get_segment_at_time(cur_time)
         if segment:
             # имя точки, фрейм, скорость, значения осей, время движения от предыдущей точки
-            pname1, p1, spd1, ax1, delta_time1 = segment[0]
-            pname2, p2, spd2, ax2, delta_time2 = segment[1]
+            pname1, p1, spd1, ax1, delta_time1, stored_pm1 = segment[0]
+            pname2, p2, spd2, ax2, delta_time2, stored_pm2 = segment[1]
             start_time = segment[2]
             end_time = segment[3]
             time_factor = 1.0
@@ -84,7 +84,18 @@ class RobotSimulation():
                 self.robot.ik_active = True
 
             elif pname2.startswith('LIN'):
-                self.robot.tcp.matrix_world = p1.lerp(p2, time_factor)
+                m1 = p1.matrix_world
+                m2 = p2.matrix_world
+                if p1.parent != p2.parent:
+                    m1 = p2.parent.matrix_world @ (stored_pm2.inverted() @ m1)
+                    #pm = mathutils.Matrix(((-1.0, 1.5099580252808664e-07, 0.0, 0.9559999704360962),
+                    #        (-1.5099580252808664e-07, -1.0, 0.0, -3.142996865790337e-05),
+                    #        (0.0, 0.0, 1.0, 0.8471949696540833),
+                    #        (0.0, 0.0, 0.0, 1.0)))
+                    #pm2 = p2.parent.matrix_world
+                    #m1 = pm2 @ (pm.inverted() @ m1)
+
+                self.robot.tcp.matrix_world = m1.lerp(m2, time_factor)
                 self.robot.update_ik()
                 
     def interactive_update(self, scene):
@@ -112,6 +123,9 @@ class RobotSimulation():
         tmp_conf = self.robot.axis_config
         for record in program:
             pname, spd, config, exkin, tool = record
+            for an, av in exkin.items():
+                self.external.set_axis_angle(an, av)
+            bpy.context.view_layer.update()
             p = bpy.context.scene.objects[pname]
             self.robot.tcp.matrix_world = p.matrix_world
             if config and pname.startswith('PTP'):
@@ -123,13 +137,29 @@ class RobotSimulation():
             delta_time = 0
             # если есть предыдущие точки, то считаем время перемещения от предыдущей в текущую
             if len(self.sequence) > 0:
+                #pp = bpy.context.scene.objects[self.sequence[-1][0]] # предыдущая точка
+                #if pp.parent != p.parent:
+                #    self.sequence.append(self.sequence[-1])
+                #    tmp_pp = pp.copy()
+                #    tmp_pp.name = 'tmp_' + pp.name
+                #    pp.users_collection[0].objects.link(tmp_pp)
                 if pname.startswith('PTP'):
                     aa0 = self.sequence[-1][3] # Предыдущее значение углов
                     delta_time = self.calc_ptp_time(aa0, aa, spd) # время перемещения
                 elif pname.startswith('LIN'):
                     pp0 = self.sequence[-1][1] # Предыдущая точка
-                    delta_time = (p.matrix_world.translation - pp0.translation).length/spd
-            self.sequence.append([pname, p.matrix_world, spd, aa, delta_time])
+                    delta_time = (p.matrix_world.translation - pp0.matrix_world.translation).length/spd
+            if p.parent and len(self.sequence) > 0:
+                aa0 = self.sequence[-1][3]
+                #print(aa0)
+                for an in self.robot.parameters['exax_names']:
+                    self.external.set_axis_angle(an, aa0[an])
+                for an in self.robot.parameters['axis_names']:
+                    self.robot.set_axis_angle(an, aa0[an])
+                #bpy.context.view_layer.update()
+                self.sequence.append([pname, p, spd, aa, delta_time, p.parent.matrix_world.copy()])
+            else:
+                self.sequence.append([pname, p, spd, aa, delta_time, mathutils.Matrix()])
         self._calc_sequence_times()
         bpy.context.scene.frame_end = int(self.sequence_times[-1] * bpy.context.scene.render.fps) + 1
         self.robot.tcp.matrix_world = tmp_mat

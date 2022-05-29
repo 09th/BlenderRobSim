@@ -273,13 +273,18 @@ class ExternalFK():
                 self.flange_state[fn] = 0
         self.flange_state[ax_name] = val
         self._update_last_flange_mat()
+        
+    def get_axis_parent(self, axis_name):
+        ax = self.objects[axis_name]
+        if ax.parent and ax.parent in self.objects.values():
+            return ax.parent
     
     def get_axis_angle(self, axis_name, form='degrees'):
         # 
         mat = self.objects[axis_name].matrix_world
-        #axis_parent = self.get_axis_parent(axis_name)
-        #if axis_parent:
-        #    mat = axis_parent.matrix_world.inverted_safe() @ mat #self.axis[axis_name].matrix_world
+        axis_parent = self.get_axis_parent(axis_name)
+        if axis_parent:
+            mat = axis_parent.matrix_world.inverted_safe() @ mat
         #else:
         #    mat = self.rob_root.matrix_world.inverted() @ mat
         idx = self.parameters['exax_dir_idx'][axis_name]
@@ -296,12 +301,15 @@ class ExternalFK():
             eul[idx] = radians(value) * self.parameters['exax_rot_direction'][axis_name]
         else:
             eul[idx] = value * self.parameters['exax_rot_direction'][axis_name]
-        mat = mathutils.Matrix.LocRotScale(self.objects[axis_name].matrix_world.translation, eul, (1,1,1))
-        #axis_parent = self.get_axis_parent(axis_name)
-        #if axis_parent:
-        #    mat = axis_parent.matrix_world @ mat
-        #else:
-        #    mat = self.rob_root.matrix_world @ mat
+        #mat = mathutils.Matrix.LocRotScale(self.objects[axis_name].matrix_world.translation, eul, (1,1,1))
+        axis_parent = self.get_axis_parent(axis_name)
+        if axis_parent:
+            mat = axis_parent.matrix_world.inverted() @ self.objects[axis_name].matrix_world
+            mat = mathutils.Matrix.LocRotScale(mat.translation, eul, (1,1,1))
+            mat = axis_parent.matrix_world @ mat
+        else:
+            mat = mathutils.Matrix.LocRotScale(self.objects[axis_name].matrix_world.translation, eul, (1,1,1))
+            #mat = self.rob_root.matrix_world @ mat
         self.objects[axis_name].matrix_world = mat
         
     def get_flange_changes(self, flush = True):
